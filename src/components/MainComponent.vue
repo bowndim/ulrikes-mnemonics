@@ -34,7 +34,7 @@
 </template>
 
 <script>
-import { ref } from "vue";
+import { ref, nextTick } from "vue";
 
 export default {
   data() {
@@ -66,18 +66,57 @@ export default {
         this.data = this.json.data;
       }
     },
+
+    // NEW: read ?kanji= (or ?q=/ ?k=) and apply once data is ready
+    _applyKanjiFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      let k =
+        params.get("kanji") ||
+        params.get("q") ||
+        params.get("k") ||
+        decodeURIComponent(window.location.hash.replace(/^#/, "") || "");
+
+      if (!k) return false;
+      // normalize whitespace
+      k = k.trim();
+      if (!k) return false;
+
+      // ensure JSON is loaded before filtering
+      if (!this.json || !this.json.data) return false;
+
+      this.inputValue = k;     // updates v-model
+      this.filterKanji();      // run the filter once
+      return true;
+    },
   },
+
   async setup() {
     const response = await fetch(
       "https://japanesestudies.github.io/joyo-kanji/complete-ulrike-joyo-kanji.json"
     );
     const json = await response.json();
     const data = ref(json.data);
-
     return { json, data };
+  },
+
+  // NEW: after mount, wait for data then apply the URL value
+  async mounted() {
+    await nextTick();
+
+    // try immediately; if not ready, retry briefly until JSON arrives
+    if (this._applyKanjiFromURL()) return;
+
+    let tries = 0;
+    const id = setInterval(() => {
+      tries++;
+      if (this._applyKanjiFromURL() || tries >= 30) {
+        clearInterval(id);
+      }
+    }, 100);
   },
 };
 </script>
+
 
 <style scoped>
 h1 {
